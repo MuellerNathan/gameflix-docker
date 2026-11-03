@@ -1,120 +1,92 @@
-# GameFlix Login and Registration API
+--- GameFlix Login and Registration API - Implement and Test Login & Registration Endpoints ---
 
-This Spring Boot service registers GameFlix members, authenticates them, issues signed JSON Web Tokens, and uses those tokens to protect the current-member profile endpoint.
+This Spring Boot application allows GameFlix members to register, log in, and view their account information through a protected endpoint.
 
-## Technology
+--- How to Run ---
 
-- Java 21
-- Spring Boot 3.5
-- Spring Web
-- Spring Security 6
-- Spring Data JPA
-- OAuth2 Resource Server JWT support
-- MySQL
-- Maven
+This project requires Java 21, MySQL, and IntelliJ IDEA.
 
-## Required endpoints
+Run schema.sql in MySQL Workbench to create the gameflix database and users table. The application expects a MySQL user named gameflix_app.
 
-| Method | Endpoint | Purpose | Expected responses |
-|---|---|---|---|
-| POST | `/api/auth/register` | Register a member and hash the password | 201, 400, or 409 |
-| POST | `/api/auth/login` | Verify credentials and issue a JWT | 200 or 401 |
-| GET | `/api/users/me` | Return the authenticated member's profile | 200 or 401 |
+CREATE USER IF NOT EXISTS 'gameflix_app'@'localhost' IDENTIFIED BY 'YOUR_MYSQL_PASSWORD';
 
-## MySQL setup
-
-1. Start MySQL.
-2. Run `schema.sql` in MySQL Workbench. It creates the `gameflix` database and the `users` table.
-3. Create the expected local database user, replacing the example password with your own local password:
-
-```sql
-CREATE USER IF NOT EXISTS 'gameflix_app'@'localhost' IDENTIFIED BY 'choose-a-local-password';
 GRANT ALL PRIVILEGES ON gameflix.* TO 'gameflix_app'@'localhost';
+
 FLUSH PRIVILEGES;
-```
 
-The expected database is `gameflix`, and the expected application username is `gameflix_app`.
-4. Copy `src/main/resources/application.properties.example` to `src/main/resources/application-local.properties`.
-5. Enter the local MySQL username and password in `application-local.properties`.
-6. Replace the JWT placeholder with a random value containing at least 32 characters.
+Copy application.properties.example and rename the copy application-local.properties. Replace the placeholders with your MySQL password and a JWT secret containing at least 32 characters. This local file is excluded from Git because it contains private information.
 
-`application-local.properties` is ignored by Git because it contains local credentials and the signing secret. The committed example file documents all required keys without exposing their values.
+Open the project in IntelliJ as a Maven project and run GameflixAuthApplication. The service will start at http://localhost:8080.
 
-## Running the service
+--- Database Schema ---
 
-1. Confirm that Java 21 and MySQL are installed.
-2. Open the project in IntelliJ IDEA as a Maven project.
-3. Allow Maven to download the dependencies.
-4. Confirm that `application-local.properties` contains valid local settings.
-5. Run `GameflixAuthApplication`.
-6. The service starts at `http://localhost:8080`.
+CREATE DATABASE IF NOT EXISTS gameflix; USE gameflix;
 
-From a terminal, the service can also be started with:
+CREATE TABLE IF NOT EXISTS users ( id BIGINT NOT NULL AUTO_INCREMENT, email VARCHAR(191) NOT NULL, password VARCHAR(255) NOT NULL, first_name VARCHAR(50) NOT NULL, last_name VARCHAR(50) NOT NULL, PRIMARY KEY (id), CONSTRAINT uk_users_email UNIQUE (email) );
 
-```bash
-./mvnw spring-boot:run
-```
+The email column is unique to prevent duplicate accounts. The password column is large enough to store the complete encoded password.
 
-On Windows, use `mvnw.cmd spring-boot:run` when the Maven wrapper is present.
+--- Password Hashing ---
 
-## Schema
+The application uses BCrypt with strength 10. I chose this setting because it meets the course requirement and provides strong password protection without making login testing too slow. Passwords are encoded before they are stored.
 
-The complete reference schema is committed as `schema.sql`. The `users` table contains `id`, `email`, `password`, `first_name`, and `last_name`. The email column has a database-level unique constraint. The password column is `VARCHAR(255)` so the complete encoded password, including its algorithm prefix, is not truncated.
+--- DDL Choice ---
 
-## Hibernate DDL choice
+spring.jpa.hibernate.ddl-auto=update
 
-The project uses `spring.jpa.hibernate.ddl-auto=update`. I selected `update` because it preserves registered members between application runs while allowing Hibernate to keep the development schema aligned with the entity. I did not use `create-drop` because it would erase the test data each time the application stops.
+I chose update because it keeps registered members in the database after the application restarts. Using create-drop would delete the test data whenever the application stopped.
 
-## Password hashing decision
+--- Token Lifetime ---
 
-Passwords are encoded with Spring Security's delegating password encoder, which selects BCrypt with strength 10 by default and stores the `{bcrypt}` prefix with each hash. BCrypt is an adaptive, salted, one-way algorithm and strength 10 meets the course minimum while remaining practical on a development computer. Registration restricts passwords to 64 characters, which also stays below BCrypt's 72-byte input limit for the assignment's test passwords.
+JWTs remain valid for 60 minutes. This provides enough time for normal testing while limiting how long a stolen token could be used. Passwords are not included in the token.
 
-## JWT design and token lifetime
+--- Test Evidence ---
 
-Successful login creates an HS256-signed JWT containing the member ID as the subject, the member email, the issue time, the issuer, and an expiration claim. No password or other confidential information is included because a JWT payload is encoded but not encrypted. The token lasts 60 minutes, which is long enough for ordinary development testing but limits the useful lifetime of a stolen token. The signing secret is loaded from the untracked local configuration rather than committed source code.
+I used Postman to test:
 
-## CORS
+Successful registration - 201 Created
+Duplicate email - 409 Conflict
+Successful login - 200 OK
+Incorrect password - 401 Unauthorized
+Protected request with a valid token - 200 OK
+Protected request without a valid token - 401 Unauthorized
+I also used the following MySQL query to confirm that the password was stored as an encoded value:
 
-CORS permits only `http://localhost:3000`, the named development front-end origin. The configuration does not use a wildcard origin.
+SELECT id, email, password FROM users;
 
-## Test evidence
+The Postman collection is included in the postman folder. Screenshots of the authentication tests are included in the separate Word document.
 
-Postman was used to demonstrate all required success and failure paths:
+--- Module 3 Design Change ---
 
-1. Successful registration returns 201.
-2. Reusing the same email returns 409.
-3. Successful login returns 200 and a signed token.
-4. Login with a wrong password returns 401 with the generic message `Invalid email or password`.
-5. `GET /api/users/me` with a valid bearer token returns 200 and the member profile without the password hash.
-6. `GET /api/users/me` with a missing or tampered token returns 401.
-7. The query `SELECT id, email, password FROM users;` shows that MySQL stores a BCrypt hash rather than the plaintext password.
+My Module 3 design used a Member Service for accounts and profiles. This project keeps that responsibility but uses the class name User and table name users to match the Module 4 instructions. Login and JWT creation are included in the same service because this assignment uses one small Spring Boot application.
 
-The exported collection is stored at `postman/GameFlix Authentication.postman_collection.json`. Annotated screenshots should be added to the separate Word evidence document required for the Canvas submission.
+-- Running GameFlix with Docker --
 
-## Module 3 design-change note
+For a Spring Boot container running GameFlix connected to a MySQL container.
 
-The Module 3 design used a Member Service to manage member accounts and profiles. The implementation keeps that responsibility but uses the table name `users` and the Java class name `User` to match the terminology in the Module 4 assignment. Authentication and token creation are implemented inside this service rather than as a separate service because the current assignment builds one small Spring Boot application.
+1. Confirm that the included .env file contains the classroom MySQL values and JWT secret.
+2. Build the JAR of your application by calling Maven as follows: clean package -DskipTests.
+3. Validate the configuration with `docker compose config`.
+4. Start up the containers with `docker compose up --build -d`.
+5. Check both containers with `docker compose ps`.
+6. Test the GameFlix endpoints at `http://localhost:8080`.
+7. Stop the containers with `docker compose down`.
 
-## AI-assisted development
+The MySQL database uses a named volume to persist the data even after the containers have been stopped.
 
-I used ChatGPT to help outline the Spring Security configuration, identify the request and response DTOs, and create a checklist for the six required Postman tests. I reviewed the suggestions against the Module 4 materials before using them. For example, I kept the suggested `SecurityFilterChain` because it matches Spring Security 6, but rejected older examples based on `WebSecurityConfigurerAdapter` because the course materials state that it has been removed.
+--- AI Use ---
 
-AI also suggested checking for an existing email before saving a new member. I changed that approach so the database unique constraint is the final authority and the controller catches `DataIntegrityViolationException`, because an application-only check could fail during two simultaneous registrations. I also removed suggestions to place the password or sensitive member details in the JWT payload because signed JWT claims are readable and the assignment specifically prohibits confidential token data.
+I used ChatGPT while creating and testing this project. I reviewed its suggestions before deciding what to keep or change.
 
-## AI-use examples for the change log
+To organize the project, ChatGPT recommended using separate controller, service, repository, and request classes. I kept this structure because it clearly separated the responsibilities of each part of the application.
+For Spring Security, the AI provided a lambda-based SecurityFilterChain. This approach was kept because it works with Spring Security 6 and matches the concepts covered in the course materials.
+An initial suggestion was to check for an existing email through the application before registering a member. I adjusted this by also adding a unique database constraint, since the database should provide the final protection against duplicate registrations.
+The MySQL password and JWT secret needed to be stored outside the main properties file. Following ChatGPT’s recommendation, I placed them in a local properties file and excluded that file from Git to prevent private values from being published.
+When working on the README, ChatGPT helped arrange the information into the sections required by the assignment. I kept the suggested headings because they made the setup instructions, security choices, test evidence, and AI-use details easier to locate.
+To confirm that I completed all required testing, I requested a checklist of the Postman tests. The checklist was useful because it covered the successful and failed requests for all three endpoints.
+During troubleshooting, I shared the application errors with ChatGPT. Its explanations helped identify incorrect MySQL credentials and a JWT secret that was too short. After making the suggested corrections, I reran the application to verify that the errors were resolved.
+Some generated blocks of code were difficult for me to understand at first, so I asked for simpler explanations. I then compared those explanations with the course materials, kept code that used covered concepts, and left out anything unfamiliar or unnecessary.
+ChatGPT also assisted with the MySQL commands for creating the GameFlix database, users table, and gameflix_app database user. After comparing the SQL with the assignment requirements, I changed the table fields to match the GameFlix design and kept the unique email constraint because duplicate registrations must be prevented at the database level.
+application.properties.example contains:
 
-- **Prompt:** "Help me configure Spring Security 6 so registration and login are public but `/api/users/me` requires a JWT."
-  **Result used:** A lambda-based `SecurityFilterChain` with stateless sessions and OAuth2 Resource Server JWT support.
-- **Prompt:** "How should I prevent duplicate GameFlix registration emails?"
-  **Result changed:** AI suggested an application lookup; I retained a lookup-free registration flow and enforced uniqueness through the MySQL constraint, returning 409 when that constraint is violated.
-- **Prompt:** "What information should be included in the GameFlix JWT?"
-  **Result changed:** I limited the token to identifying and timing claims and excluded passwords and other confidential information.
-- **Prompt:** "Give me the Postman tests required for registration, login, and the protected profile route."
-  **Result used:** A six-test checklist covering both successful requests and required failure cases.
-
-## Important security behavior
-
-- Passwords are never returned by an endpoint or written to application logs.
-- Login always uses the same failure message whether the email is unknown or the password is wrong.
-- Missing, expired, or modified tokens are rejected with 401.
-- The JWT signing secret and MySQL credentials are not committed.
+spring.datasource.url=jdbc:mysql://localhost:3306/gameflix spring.datasource.username=gameflix_app spring.datasource.password=YOUR_MYSQL_PASSWORD app.jwt.secret=REPLACE_WITH_A_RANDOM_SECRET_AT_LEAST_32_CHARACTERS_LONG
