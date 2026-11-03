@@ -1,0 +1,9 @@
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+*.log
+.env
+.DS_Store
+src/main/resources/application-local.properties
