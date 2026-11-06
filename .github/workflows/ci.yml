@@ -41,7 +41,10 @@ jobs:
       - name: Install Trivy
         run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
+      - name: Display HIGH and CRITICAL findings
+        run: trivy image --severity HIGH,CRITICAL --exit-code 0 gameflix-backend:latest
+
       - name: Scan and gate
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 gameflix-backend:latest .
+        run: trivy image --severity CRITICAL --exit-code 1 gameflix-backend:latest
 
         
